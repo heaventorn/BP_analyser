@@ -1,0 +1,23 @@
+# API 密钥（绝对不能上传公开仓库）
+.env
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 输出文件（分析结果 Excel）
+output/
+
+# 商业计划书原件（他人隐私，不上传）
+BP/
+
+# PyInstaller 打包临时文件
+build/
+dist/
+*.spec
+
+# 打包后的可执行文件（51MB，可从源码重新打包，不上传）
+FX.exe
+
+# 临时脚本
+_*.py
