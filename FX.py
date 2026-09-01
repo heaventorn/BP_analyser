@@ -11,8 +11,50 @@ from openpyxl.utils import get_column_letter
 from datetime import datetime
 import tkinter as tk
 
-# ===== 启动密码验证（第一道门，不通过直接退出）=====
+# ===== 启动密码验证（双密码：访问密码0762哈希 + 本地pwd.key二级密钥哈希）=====
+import os
+import hashlib
+
+try:
+    from argon2 import PasswordHasher
+    from argon2.exceptions import VerifyMismatchError
+    _ARGON2_OK = True
+except Exception:
+    _ARGON2_OK = False
+
+# Argon2id 组合哈希 = Argon2("0762" + 强密码)，程序外一次性生成（16MB 内存档，低配办公机友好）
+ARGON2_HASH = "$argon2id$v=19$m=16384,t=2,p=1$e271hJRDAT/51KFNNb+YrQ$XYTVkcdfu8Ypeq4BFKC6hsQPpR3BsuX3EJXQs5aOd/I"
+PH = PasswordHasher(time_cost=2, memory_cost=16384, parallelism=1)
+
+def _load_key():
+    """读取本地 pwd.key 中的强密码明文（该文件不上传仓库）"""
+    try:
+        base = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
+        with open(os.path.join(base, "pwd.key"), "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+def _verify(pwd):
+    """Argon2 校验；密码不匹配返回 False"""
+    if not _ARGON2_OK:
+        return False
+    try:
+        PH.verify(ARGON2_HASH, pwd)
+        return True
+    except VerifyMismatchError:
+        return False
+    except Exception:
+        return False
+
 def _check_password():
+    if not _ARGON2_OK:
+        print("错误：缺少 argon2-cffi 库。请先执行: pip install argon2-cffi")
+        return False
+    key = _load_key()
+    if not key:
+        print("错误：找不到本地密钥文件 pwd.key，程序拒绝启动。")
+        return False
     root = tk.Tk()
     root.title("身份验证")
     root.geometry("320x150")
@@ -24,11 +66,17 @@ def _check_password():
     entry.pack(pady=4)
     entry.focus_set()
 
-    state = {"ok": False, "pwd": ""}
+    state = {"ok": False}
+    err_label = None
     def on_ok():
-        state["ok"] = True
-        state["pwd"] = entry.get()
-        root.destroy()
+        nonlocal err_label
+        if _verify(entry.get() + key):
+            state["ok"] = True
+            root.destroy()
+        else:
+            if err_label is None:
+                err_label = tk.Label(root, text="密码错误", fg="red", font=("微软雅黑", 9))
+                err_label.pack()
     def on_cancel():
         root.destroy()
 
@@ -40,7 +88,7 @@ def _check_password():
     entry.bind("<Escape>", lambda e: on_cancel())
     root.protocol("WM_DELETE_WINDOW", on_cancel)
     root.mainloop()
-    return state["ok"] and state["pwd"] == "0762"
+    return state["ok"]
 
 if not _check_password():
     print("密码验证失败或已取消，程序退出。")
